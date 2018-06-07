@@ -10,10 +10,14 @@ let tileSize=256;
 //let maxxx=11718229.9676737;
 //let minyy=3463240.53232053;
 //let maxyy=3521082.16338265;
-let minxx=1.1510554227623262E7;
-let maxxx=1.1596033905968523E7;
-let minyy=3873362.1197821973;
-let maxyy=3931793.782489589;
+//top：3341688.33962007
+//bellow：3323637.8548289
+//left：11544035.9519079
+//right：11569674.6032469
+let minxx=11544035.9519079;
+let maxxx=11569674.6032469;
+let minyy=3323637.8548289;
+let maxyy=3341688.33962007;
 
 var doExe = function (x, y, z, callback) {
   setTimeout(function () {
