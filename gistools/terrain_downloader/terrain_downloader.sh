@@ -7,8 +7,8 @@ cd tmp
 
 curl -s https://www.terrainserver.com/serveTerrain/world/layer.json -O
 
-minZ=$1
-maxZ=$2
+minZ=$2
+maxZ=$1
 if [[ -z $1  ]]; then
   maxZ=9
 fi
@@ -28,7 +28,6 @@ for (( z=minZ; z<=maxZ; z++)); do
       if [ ! -d $path  ]; then
         mkdir -p $path
       fi
-      curl -s "https://www.terrainserver.com/serveTerrain/world/$z/$x/$y.terrain?v=1.1.1" -o $file
 
       if [ ! -f "$file"  ]; then
         curl -s "https://www.terrainserver.com/serveTerrain/world/$z/$x/$y.terrain?v=1.1.1" -o $file
