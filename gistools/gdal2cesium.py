@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #******************************************************************************
 #  $Id: gdal2cesium.py 2014-10-01 12:01:23Z $
-# 
+#
 # Project:  Cesium terrain generator for GDAL raster formats - S.I.T. Comune di Prato (Italy)
 # Support:  Gis3w s.a.s. (http://gis3w.it)
 # Purpose:  Convert a raster into a heightmap terrain for Cesium 3D Javascript library
@@ -14,18 +14,18 @@
 ###############################################################################
 # Copyright (c) 2014, S.I.T. Comune di Prato (Italy)
 
-#  This program is free software; you can redistribute it and/or modify  
-#  it under the terms of the GNU General Public License as published by  
-#  the Free Software Foundation; either version 2 of the License, or     
-#  (at your option) any later version.                                   
-# 
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
 #  Permission is hereby granted, free of charge, to any person obtaining a
 #  copy of this software and associated documentation files (the "Software"),
 #  to deal in the Software without restriction, including without limitation
 #  the rights to use, copy, modify, merge, publish, distribute, sublicense,
 #  and/or sell copies of the Software, and to permit persons to whom the
 #  Software is furnished to do so, subject to the following conditions:
-# 
+#
 #  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 #  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 #  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
@@ -63,10 +63,10 @@ resampling_list = ('average','near','bilinear','cubic','cubicspline','lanczos')
 
 def makepoly(ulx,uly,lrx,lry):
     return Polygon([(ulx, uly), (lrx, uly), (lrx, lry), (ulx, lry), (ulx, uly)])
-    
+
 def makeline(ulx,uly,lrx,lry):
     return LineString([(ulx, uly), (lrx, uly), (lrx, lry), (ulx, lry), (ulx, uly)])
-	
+
 def splitpath(path):
     parts=[]
     (path, tail)=os.path.split( path)
@@ -77,7 +77,7 @@ def splitpath(path):
     return map( os.path.normpath, parts)[::-1]
 
 class GlobalGeodetic(object):
-    def __init__(self, tileSize = 256):
+    def __init__(self, tileSize = 64):
         self.tileSize = tileSize
 
     def LatLonToPixels(self, lat, lon, zoom):
@@ -124,7 +124,7 @@ class GlobalGeodetic(object):
             (tx+1)*self.tileSize*res - 180,
             (ty+1)*self.tileSize*res - 90
         )
-        
+
     def TileBoundsForTileSize(self, tx, ty, zoom, extrapixels):
         res = 180.0 / self.tileSize / 2**zoom
         # we have to calculate a wider bound to consider the overlapping pixel according to Cesium format
@@ -148,18 +148,18 @@ class PostProcessor(object):
         self.pattern = '*.terrain'
         self.processedPath = outPath
         self.rtype = numpy.dtype('int16')
-    
+
     def walk_tiles(self,folder = '.'):
         for root, _, files in os.walk(self.rootPath):
             for filename in fnmatch.filter(files, self.pattern):
                 yield( os.path.join(root, filename))
-        
+
     def get_tiles(self):
         terrains = []
         for terrain in self.walk_tiles():
             terrains.append(terrain)
         return terrains
-    
+
     def extract_data(self,fin,rb):
         data = numpy.fromfile(fin,dtype=self.rtype,count=4096)
         data_mat = data.reshape((64,64))
@@ -168,30 +168,30 @@ class PostProcessor(object):
         else:
             data_slice = data_mat[0] # top row
         return data_slice
-        
+
     def augment_tile(self,fin,data_slice_r,data_slice_b,pixel_br):
         data_complete = numpy.fromfile(fin,dtype=self.rtype,count=4097)
         data = data_complete[:4096]
         maskbytes = data_complete[4096]
         data_mat = data.reshape((64,64))
-    
+
         data_slice_b_br = numpy.c_[[data_slice_b],[pixel_br]] # add bottom right pixel to bottom row as new col
         data_mat_r = numpy.c_[data_mat,data_slice_r] # add right col to data
         data_mat_brpr = numpy.r_[data_mat_r,data_slice_b_br] # add bottom row to data
-        
+
         return data_mat_brpr,maskbytes
-    
+
     def write_tile(self,tilename,new_tile,maskbytes):
         tilepath = os.path.join(self.processedPath,tilename)
         if not os.path.exists(os.path.dirname(tilepath)):
             os.makedirs(os.path.dirname(tilepath))
-         
-         
+
+
         tilearrayint = new_tile.astype(numpy.int16)
         data = tilearrayint.flatten()
         data_with_mask = numpy.append(data,maskbytes)
         data_with_mask.tofile(tilepath)
-        
+
     def run(self):
         for terrain in self.get_tiles():
             pathparts = splitpath(terrain)
@@ -203,51 +203,51 @@ class PostProcessor(object):
             right_tile = os.path.join(root,str(z),str(x+1),"%s.terrain" % y)
             bottom_tile = os.path.join(root,str(z),str(x),"%s.terrain" % str(y-1))
             bottom_right_tile = os.path.join(root,str(z),str(x+1),"%s.terrain" % str(y-1))
-            
+
             if os.path.exists(right_tile):
                 with open(right_tile, 'rb') as right_tile_f:
                     data_slice_r = self.extract_data(right_tile_f,'r')
             else:
                 data_slice_r = numpy.empty(64)
                 data_slice_r.fill(5000)
-            
+
             if os.path.exists(bottom_tile):
                 with open(bottom_tile, 'rb') as bottom_tile_f:
                     data_slice_b = self.extract_data(bottom_tile_f,'t')
             else:
                 data_slice_b = numpy.empty(64)
                 data_slice_b.fill(5000)
-            
+
             if os.path.exists(bottom_right_tile):
                 with open(bottom_right_tile, 'rb') as bottom_right_tile_f:
                     data = numpy.fromfile(bottom_right_tile_f,dtype=self.rtype,count=1)
                     pixel_br = data[0]
             else:
                 pixel_br = 5000
-        
+
             with open(terrain, 'rb') as terrain_f:
                 new_tile,maskbytes = self.augment_tile(terrain_f,data_slice_r,data_slice_b,pixel_br)
                 tilename = os.path.join(*pathparts[idx-3:idx])
                 self.write_tile(tilename,new_tile,maskbytes)
 
 class GDAL2Cesium(object):
-    # -------------------------------------------------------------------------    
+    # -------------------------------------------------------------------------
     def process(self):
         for inumpyut_file in self.inumpyuts:
             self.inumpyut = inumpyut_file
             self.pre_process_inumpyut(inumpyut_file)
-        
+
         self.merge_inumpyuts_data()
-        
+
         self.make_tiles()
-        
+
         print """Running post processing"""
         pp = PostProcessor(self.output,self.tmpoutput)
         pp.run()
         print """Post processing terminated"""
         shutil.rmtree(self.tmpoutput)
-        
-        
+
+
     def merge_inumpyuts_data(self):
         # Merge tminmax. We will use the extent containing all the layers for the lower zooms and only the higher resolution layer for the highest zooms
         global_tminmax = []
@@ -276,9 +276,9 @@ class GDAL2Cesium(object):
                             global_tminmax[tz][2] = tmaxx
                         if tmaxy > global_tminmax[tz][3]:
                             global_tminmax[tz][3] = tmaxy
-                            
+
         self.tminmax = global_tminmax
-        
+
         # Split zooms in zoom ranges based on resolutions (to build the related vrt files)
         for _inumpyut,inumpyut_data in self.inumpyuts_data.iteritems():
             minz = inumpyut_data[0]
@@ -297,10 +297,10 @@ class GDAL2Cesium(object):
                     if self.zoom_resolutions[zoom][0] < inumpyut_data[3]:
                         self.zoom_resolutions[zoom] = (inumpyut_data[3],inumpyut_data[4])
         '''print "MERGED"
-        for tz,tminmax_values in enumerate(self.global_tminmax): 
+        for tz,tminmax_values in enumerate(self.global_tminmax):
             print "  tz: %s, tminmax: %s" % (tz,tminmax_values)
         '''
-        
+
     # -------------------------------------------------------------------------
     def error(self, msg, details = "" ):
         """Print an error message and stop the processing"""
@@ -329,7 +329,7 @@ class GDAL2Cesium(object):
         except:
             print "gdalbuildvrt is required to run gdal2cesium in multi inumpyuts mode"
             exit(1)
-        
+
         self.stopped = False
         self.multi_suffix = ''
         self.inumpyut = None
@@ -342,7 +342,7 @@ class GDAL2Cesium(object):
         self.zoom_resolutions = {}
         self.tminz = None
         self.tmaxz = None
-        
+
         gdal.AllRegister()
         self.mem_drv = gdal.GetDriverByName( 'MEM' )
         self.geodetic = GlobalGeodetic()
@@ -350,18 +350,18 @@ class GDAL2Cesium(object):
         # Tile format
         self.tilesize = 64
         self.tileext = 'terrain'
-        
+
         self.epsg4326 = "EPSG:4326"
-        
+
         self.tilelayer = None
 
         self.scaledquery = True
         # How big should be query window be for scaling down
         # Later on reset according the chosen resampling algorightm
         self.querysize = 4 * self.tilesize
-        
+
         # pixel overlap between tiles according to Ceiusm heightmap format
-        self.extrapixels = 0 
+        self.extrapixels = 0
 
         # RUN THE ARGUMENT PARSER:
         self.optparse_init()
@@ -378,7 +378,7 @@ class GDAL2Cesium(object):
         except:
             self.error("This version of GDAL is not supported. Please upgrade to 1.6+.")
             #,"You can try run crippled version of gdal2tiles with parameters: -v -r 'near'")
-        
+
         self.inumpyuts = [i for i in self.args]
 
         # Default values for not given options
@@ -424,7 +424,7 @@ class GDAL2Cesium(object):
             if max:
                 self.user_tmaxz = int(max)
             else:
-                self.user_tmaxz = int(min) 
+                self.user_tmaxz = int(min)
 
         # Output the results
         if self.options.verbose:
@@ -440,7 +440,7 @@ class GDAL2Cesium(object):
         from optparse import OptionParser, OptionGroup
         usage = "Usage: %prog [options] inumpyut_file(s)"
         p = OptionParser(usage, version="%prog ")
-        
+
         p.add_option("-s", "--s_srs", dest="s_srs",
                           help="Define inumpyut raster CRS (eg EPSG:3003)")
         p.add_option('-z', '--zoom', dest="zoom",
@@ -448,7 +448,7 @@ class GDAL2Cesium(object):
         p.add_option("-r", "--resampling", dest="resampling", type='choice', choices=resampling_list,
                         help="Resampling method (%s) - default 'average'" % ",".join(resampling_list))
         p.add_option('-e', '--resume', dest="resume", action="store_true",
-                          help="Resume mode. Generate only missing files.")        
+                          help="Resume mode. Generate only missing files.")
         p.add_option("-v", "--verbose",
                           action="store_true", dest="verbose",
                           help="Print status messages to stdout")
@@ -458,17 +458,17 @@ class GDAL2Cesium(object):
                           help="Create the shapefile of tiles index (True or False)")
         p.add_option("-k", "--keep",dest="keepfiles",action="store_true",default=False,
                           help="Keep temporary files reated by gdal2cesium")
-              
+
         p.set_defaults(resume=False,verbose=False,resampling='average')
         self.parser = p
-                
+
     # -------------------------------------------------------------------------
     def pre_process_inumpyut(self,_inumpyut):
         """Initialization of the inumpyut raster, reprojection if necessary"""
         print "Processing: %s" % _inumpyut
-        
+
         inumpyut_or_vrt = _inumpyut
-        
+
         if not self.mem_drv:
             raise Exception("The 'MEM' driver was not found, is it available in this GDAL build?")
 
@@ -542,19 +542,19 @@ gdal2tiles temp.vrt""" % _inumpyut )
 
         # Are the reference systems the same? Reproject if necessary.
         out_ds = None
-                              
+
         if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
             self.error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.",
             "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
-        
+
         in_srs_code = self.in_srs.GetAttrValue("AUTHORITY", 0)
         in_ds_srs = osr.SpatialReference()
         res = in_ds_srs.ImportFromWkt(in_ds.GetProjection())
-        
+
         if res != 0 and in_srs_code is None:
                 print "ERROR! The inumpyut file %s has no SRS associated and no SRS has been defined in inumpyut (-s parameter)" % _inumpyut
                 exit(1)
- 
+
         if self.in_srs:
             if in_ds_srs.ExportToProj4() != self.out_srs.ExportToProj4():
                 if (self.in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
@@ -576,7 +576,7 @@ gdal2tiles temp.vrt""" % _inumpyut )
 
         if out_ds and self.options.verbose:
             print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_ds.RasterXSize, out_ds.RasterYSize, out_ds.RasterCount))
-        
+
         if not out_ds:
             out_ds = in_ds
 
@@ -591,8 +591,8 @@ gdal2tiles temp.vrt""" % _inumpyut )
             dataBandsCount = out_ds.RasterCount - 1
         else:
             dataBandsCount = out_ds.RasterCount
-        
-        # Read the georeference 
+
+        # Read the georeference
         out_gt = out_ds.GetGeoTransform()
 
         # Report error in case rotation/skew is in geotransform (possible only in 'raster' profile)
@@ -639,9 +639,9 @@ gdal2tiles temp.vrt""" % _inumpyut )
         tmaxz = geodetic.ZoomForPixelSize( out_gt[1] )
         if self.options.verbose:
             print ('Max Zoom: %s' % tmaxz)
-        
+
         self.inumpyuts_data[_inumpyut] = [tminz,tmaxz,tminmax,out_gt[1],out_gt[5]]
-        
+
         self.inumpyuts_files_or_vrt.append(inumpyut_or_vrt)
 
         if self.options.verbose:
@@ -655,7 +655,7 @@ gdal2tiles temp.vrt""" % _inumpyut )
             res = subprocess.check_output("gdalbuildvrt -srcnodata 0 -resolution user -tr %s %s cesium_%s.vrt %s" % (abs(resx),abs(resy),i,inumpyuts), shell=True)
         except:
             exit(1)
-    
+
     def make_tiles(self):
         # Generate the vrt files for zoom ranges
         i = 0
@@ -675,7 +675,7 @@ gdal2tiles temp.vrt""" % _inumpyut )
                 i += 1
             if tz == self.tmaxz:
                 self.vrts[vrt_file][1] = tz
-        
+
         self.ti_cum = 0
         if self.options.createtileindexshp and self.tilelayer is None:
             driver = ogr.GetDriverByName('Esri Shapefile')
@@ -689,10 +689,10 @@ gdal2tiles temp.vrt""" % _inumpyut )
             self.tilelayer.CreateField(ogr.FieldDefn('zoom', ogr.OFTInteger))
             self.tilelayer.CreateField(ogr.FieldDefn('tile', ogr.OFTString))
             self.tilelayer.CreateField(ogr.FieldDefn('children', ogr.OFTInteger))
-            
+
         # Generate parent tiles
         self.generate_fake_parent_tiles()
-        
+
         # For each vrt (i.e. zoom range) generate the tiles
         self.steps = len(self.vrts)
         self.step = 1
@@ -704,38 +704,38 @@ gdal2tiles temp.vrt""" % _inumpyut )
                 except:
                     pass
             self.step += 1
-        
+
         self.create_layerjsonfile()
-        
+
         if self.options.createtileindexshp and self.tilelayer is not None:
             shptileindex.Destroy()
             shptileindex = self.tilelayer = feat = geom = None
-            
+
         print """Processing finished. Tiles written to "%s".""" % self.output
-    
+
     def process_vrt(self,vrt):
         self.open_inumpyut(vrt)
         self.generate_tiles(vrt)
 
-        
+
     def open_inumpyut(self,vrt):
         if vrt:
             self.in_ds = gdal.Open(vrt, gdal.GA_ReadOnly)
         else:
             raise Exception("No vrt file was specified")
-            
+
         if self.options.verbose:
             print("Inumpyut file:", "( %sP x %sL - %s bands)" % (self.in_ds.RasterXSize, self.in_ds.RasterYSize, self.in_ds.RasterCount))
 
         if not self.in_ds:
             # Note: GDAL prints the ERROR message too
             self.error("It is not possible to open the inumpyut file '%s'." % vrt )
-            
+
         if self.in_ds.RasterCount == 0:
             self.error( "Inumpyut file '%s' has no raster band" % vrt )
-        
+
         self.out_ds = self.in_ds
-        
+
         # Get alpha band (either directly or from NODATA value)
         self.alphaband = self.out_ds.GetRasterBand(1).GetMaskBand()
         if (self.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or self.out_ds.RasterCount==4 or self.out_ds.RasterCount==2:
@@ -750,9 +750,9 @@ gdal2tiles temp.vrt""" % _inumpyut )
         HAS_SE = 0x02
         HAS_NW = 0x04
         HAS_NE = 0x08
-        
+
         NB_FLAGS = 0x00
-        
+
         if N & W:
             NB_FLAGS = NB_FLAGS | HAS_NW
         if N & E:
@@ -761,9 +761,9 @@ gdal2tiles temp.vrt""" % _inumpyut )
             NB_FLAGS = NB_FLAGS | HAS_SW
         if S & E:
             NB_FLAGS = NB_FLAGS | HAS_SE
-        
+
         return NB_FLAGS
-        
+
     def generate_fake_parent_tiles(self):
         tx = None
         for tz in range(self.tminz-1,-1,-1):
@@ -775,22 +775,22 @@ gdal2tiles temp.vrt""" % _inumpyut )
                     tmaxx_cpot = tminx_cpot + 1
                     tminy_cpot = ty * 2
                     tmaxy_cpot = tminy_cpot + 1
-                    
+
                     N = S = E = W = False
                     if tminx_cpot >= tminx_c:
                         W = True
                     if tmaxx_cpot <= tmaxx_c:
                         E = True
                     if tminy_cpot >= tminy_c:
-                        S = True              
+                        S = True
                     if tmaxy_cpot <= tmaxy_c:
                         N = True
-                    
+
                     NB_FLAGS = self.make_child_flags(N,S,E,W)
                     if self.options.verbose:
                         print "Fake tile %s,%s,%s" % (tz,tx,ty)
                     self.write_fake_tile(tz,tx,ty,NB_FLAGS)
-   
+
         # Write missing zero level tile with no children, tx 0 in case the zero level parent tileX is 1, 1 otherwise
         if tx:
             tx = 1-tx
@@ -798,13 +798,13 @@ gdal2tiles temp.vrt""" % _inumpyut )
             tx = 0
 
         self.write_fake_tile(0,tx,0,0x00)
-            
+
     def write_fake_tile(self,tz,tx,ty,NB_FLAGS):
         tilefilename = os.path.join(self.tmpoutput, str(tz), str(tx), "%s.%s" % (ty, self.tileext))
         # Create directories for the tile
         if not os.path.exists(os.path.dirname(tilefilename)):
             os.makedirs(os.path.dirname(tilefilename))
-            
+
         if self.options.createtileindexshp and self.tilelayer is not None:
             self.ti_cum += 1
             tilelayerdefn = self.tilelayer.GetLayerDefn()
@@ -818,14 +818,14 @@ gdal2tiles temp.vrt""" % _inumpyut )
             feat.SetGeometry(geom)
             self.tilelayer.CreateFeature(feat)
             feat = geom = None
-        
+
         # convert to integer representation of heightmap accordind to Cesium format and append children flags byte
         tilearrayint = (numpy.zeros(4096,numpy.dtype('int16')) + 1000) * 5
         tilearrayint.tofile(tilefilename)
         child_water_bytes = struct.pack('<BB',NB_FLAGS,0x00)
         with open(tilefilename,'ab') as outfile:
             outfile.write(child_water_bytes)
-    
+
     def generate_tiles(self,vrt):
         """Generation of the Csium tiles from the inumpyut raster"""
         print("Generating Tiles (round %s of %s):" % (self.step,self.steps))
@@ -835,28 +835,28 @@ gdal2tiles temp.vrt""" % _inumpyut )
         HAS_SE = 0x02
         HAS_NW = 0x04
         HAS_NE = 0x08
-        
+
         tminz = self.vrts[vrt][0]
         tmaxz = self.vrts[vrt][1]
-        
+
         tcount = 0
         for tz in range(tmaxz, tminz-1, -1):
             tminx, tminy, tmaxx, tmaxy = self.tminmax[tz]
             tcount += (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
-         
+
         ti = 0
         for tz in range(tmaxz, tminz-1, -1):
             # do not overwrite any real tile with successive inputs' fake tiles
             tminx, tminy, tmaxx, tmaxy = self.tminmax[tz]
             if tz < self.tmaxz:
                 tminx_c, tminy_c, tmaxx_c, tmaxy_c = self.tminmax[tz+1]
-            
+
             if self.options.verbose:
                 tcount_zoom = (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
                 print ("Tminx - Tmax: %s-%s" % (tminx,tmaxx))
                 print ("Tminy - Tmaxy: %s-%s" % (tminy,tmaxy))
                 print("Tile count for zoom %s: %s" % (tz,tcount_zoom))
-            
+
             for ty in range(tmaxy, tminy-1, -1):
                 for tx in range(tminx, tmaxx+1):
                     if self.options.resume and os.path.exists(os.path.join(self.tmpoutput, str(tz), str(tx), "%s.%s" % (ty, self.tileext))):
@@ -869,17 +869,17 @@ gdal2tiles temp.vrt""" % _inumpyut )
                         tmaxx_cpot = tminx_cpot + 1
                         tminy_cpot = ty * 2
                         tmaxy_cpot = tminy_cpot + 1
-                        
+
                         N = S = E = W = False
                         if tminx_cpot >= tminx_c and tminx_cpot <= tmaxx_c:
                             W = True
                         if tmaxx_cpot >= tminx_c and tmaxx_cpot <= tmaxx_c:
                             E = True
                         if tminy_cpot >= tminy_c and tminy_cpot <= tmaxy_c:
-                            S = True              
+                            S = True
                         if tmaxy_cpot >= tminy_c and tmaxy_cpot <= tmaxy_c:
                             N = True
-                            
+
                         NB_FLAGS = self.make_child_flags(N,S,E,W)
                     if self.stopped:
                         break
@@ -948,7 +948,7 @@ gdal2tiles temp.vrt""" % _inumpyut )
         datatype = gdal_array.GDALTypeCodeToNumericTypeCode(ds.GetRasterBand(1).DataType)
         if datatype != numpy.float32:
             data = numpy.frombuffer(data, dtype=datatype).astype(numpy.float32).tostring()
-        
+
         if tilesize_aug == querysize:
             # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
             dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1,self.dataBandsCount+1)))
@@ -959,26 +959,26 @@ gdal2tiles temp.vrt""" % _inumpyut )
             self.scale_query_to_tile(dsquery, dstile)
             del dsquery
         del data
-        
+
         tilearray = numpy.array(dstile.ReadAsArray())
         del dstile
         return tilearray
         #return None
-    
+
     def write_tile(self,tilearray,tz,tx,ty,NB_FLAGS,WATER_MASK=0):
         tilefilename = os.path.join(self.tmpoutput, str(tz), str(tx), "%s.%s" % (ty, self.tileext))
         # Create directories for the tile
         if not os.path.exists(os.path.dirname(tilefilename)):
             os.makedirs(os.path.dirname(tilefilename))
-        
-        # convert to integer representation of heightmap accordind to Cesium format and append children flags byte       
+
+        # convert to integer representation of heightmap accordind to Cesium format and append children flags byte
         tilearray = (tilearray+1000) * 5
         tilearrayint = tilearray.astype(numpy.int16)
         tilearrayint.tofile(tilefilename)
         child_water_bytes = struct.pack('<BB',NB_FLAGS,WATER_MASK)
         with open(tilefilename,'ab') as outfile:
             outfile.write(child_water_bytes)
-            
+
     def create_layerjsonfile(self):
         with open(os.path.join(self.output,'layer.json'),'w') as lj:
             lj.write("""{
@@ -1050,8 +1050,8 @@ gdal2tiles temp.vrt""" % _inumpyut )
             # Other algorithms are implemented by gdal.ReprojectImage().
             dsquery.SetGeoTransform( (0.0, tilesize / float(querysize), 0.0, 0.0, 0.0, tilesize / float(querysize)) )
             dstile.SetGeoTransform( (0.0, 1.0, 0.0, 0.0, 0.0, 1.0) )
-            
-            res = gdal.ReprojectImage(dsquery, dstile, None, None, self.resampling)    
+
+            res = gdal.ReprojectImage(dsquery, dstile, None, None, self.resampling)
             if res != 0:
                 self.error("ReprojectImage() failed on %s, error %d" % (tilefilename, res))
 
