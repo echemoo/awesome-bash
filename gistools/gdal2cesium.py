@@ -636,7 +636,8 @@ gdal2tiles temp.vrt""" % _inumpyut )
             print ('Min Zoom: %s' % tminz)
 
         # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
-        tmaxz = geodetic.ZoomForPixelSize( out_gt[1] )
+        tmaxz = geodetic.ZoomForPixelSize( out_gt[1] ) + 1
+        # tmaxz = geodetic.ZoomForPixelSize( out_gt[1] )
         if self.options.verbose:
             print ('Max Zoom: %s' % tmaxz)
 
